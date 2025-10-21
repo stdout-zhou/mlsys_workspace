@@ -77,8 +77,8 @@ def benchmark_pin_memory(pin_memory: bool):
 
 # pin_memory: True H2D time cost: 0.09655046463012695
 # pin_memory: True D2H time cost: 0.08164072036743164
-PCle是一条可以双向传输数据的总线， D2H和H2D耗时相近。
 ```
+PCle是一条可以双向传输数据的总线， D2H和H2D耗时相近。
 
 ## numa
 [pytorch tutorial](https://intel.github.io/intel-extension-for-pytorch/cpu/latest/tutorials/performance_tuning/tuning_guide.html#numactl)
@@ -158,3 +158,91 @@ pin_memory: True H2D time cost: 0.09686589241027832
 pin_memory: True D2H time cost: 0.08164668083190918
 ```
 `gpu0`和`node0`之间数据拷贝更快。
+
+## non_blocking
+从cpu拷贝数据到gpu上时，设置`non_blocking=True`可以让data transfer的过程变成异步。此时cpu可以去准备下一个batch的训练数据。
+
+gpu有些不同，它只有一个工作队列，如果想让gpu计算和拷贝数据并行，必须创建不同的`stream`，同一个stream
+内部保证执行顺序固定，stream间并行。
+
+利用`double buffer`可以让计算和数据传输并行
+``` python
+import time
+
+import torch
+
+
+_BATCH_SIZE = 16384
+_FEATURES_IN = 4096
+_FEATURES_OUT = 4096
+_NUM_BATCH = 10
+
+_WEIGHT = torch.rand(_FEATURES_IN, _FEATURES_OUT, device="cuda:0")
+
+
+def _compute(data):
+    for _ in range(1):
+        data = torch.matmul(data, _WEIGHT)
+    return data
+
+
+def _sync_run():
+    start_time = time.perf_counter()
+    for _ in range(_NUM_BATCH):
+        cpu_data = torch.rand(_BATCH_SIZE, _FEATURES_IN, device="cpu", pin_memory=True)
+        gpu_data = cpu_data.to(device="cuda:0", non_blocking=False)
+        output = _compute(gpu_data)
+    torch.cuda.synchronize()
+    end_time = time.perf_counter()
+    return end_time - start_time
+
+
+def _async_run():
+    start_time = time.perf_counter()
+    stream1 = torch.cuda.Stream()
+    stream2 = torch.cuda.Stream()
+    cpu_data = torch.rand(_BATCH_SIZE, _FEATURES_IN, device="cpu", pin_memory=True)
+    gpu_buffer1 = torch.empty(_BATCH_SIZE, _FEATURES_IN, device="cuda:0")
+    gpu_buffer2 = torch.empty(_BATCH_SIZE, _FEATURES_IN, device="cuda:0")
+
+    with torch.cuda.stream(stream1):
+        gpu_buffer1.copy_(cpu_data, non_blocking=True)
+
+    for idx in range(_NUM_BATCH):
+        if idx % 2 == 0:
+            current_stream = stream1
+            next_stream = stream2
+            current_buffer = gpu_buffer1
+            next_buffer = gpu_buffer2
+        else:
+            current_stream = stream2
+            next_stream = stream1
+            current_buffer = gpu_buffer2
+            next_buffer = gpu_buffer1
+        with torch.cuda.stream(current_stream):
+            output = _compute(current_buffer)
+        if idx < _NUM_BATCH - 1:
+            cpu_data = torch.rand(_BATCH_SIZE, _FEATURES_IN, device="cpu", pin_memory=True)
+            with torch.cuda.stream(next_stream):
+                next_buffer.copy_(cpu_data, non_blocking=True)
+    
+    stream1.synchronize()
+    stream2.synchronize()
+    end_time = time.perf_counter()
+    return end_time - start_time
+            
+
+def benchmark_non_blocking():
+    # warm up
+    torch.randn(100)
+    torch.cuda.synchronize()
+    async_run_time = _async_run()
+    sync_run_time = _sync_run()
+    print(f"sync run time is {sync_run_time}")
+    print(f"async_run_time is {async_run_time}")
+
+
+benchmark_non_blocking()
+```
+但并非任何情况都有效，如果计算或数据传输有一方是bottle neck，则会隐藏另一方的耗时，导致多stream没有效果。
+pytorch tutorial告诉我们一般可以把`pin_memory`和`non_blocking`设置成`True`。
