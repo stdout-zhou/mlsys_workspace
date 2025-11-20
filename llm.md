@@ -1,10 +1,17 @@
 # Transformer
 使用监督学习的网络结构。
+
 把句子分割成若干词语(token), 给每个token一个embedding, 同时因为token的位置关系也很重要, 所以要叠加position embedding。
+
 维护三个权重矩阵Q, K, V, 每个词token和Q, K, V做矩乘得到O_Q, O_K, O_V。
+
 用当前token的O_Q去和所有token的O_K做点积运算, 并归一化, 会得到一个新的向量, 称它为attention score, attention score越大, 代表和当前token关系越紧密。
+
 用attention score里的每个标量去和所有token的O_V做乘法再相加, 得到的就是self-attention学习到的信息。
+
 上面的所有过程称为encoder。
+
+---
 
 把encoder的输出过一个FFN全连接层网络, 并归一化, 生成一个目标字典长度的新的向量, 向量中第i个数值代表下一个token是目标字典第i个单词的概率。
 这个过程称为decoder。
