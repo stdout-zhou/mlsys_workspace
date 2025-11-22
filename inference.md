@@ -25,7 +25,7 @@ TensorRT有很多不支持的cuda算子，工程上一般会选择ORT + TensorRT
 
 推理框架会自动帮忙做些fusion，一般是基于一些固定的pattern，比如连续出现conv + batch norm。
 
-但有些场景, 比如conv + conv, 要对卷积参数的reshape, 框架没有聪明到知道这两个conv之间能做数学合并, 这时候还是依赖导出onnx时写代码手动合并。
+但有些场景, 比如conv + conv, 要对卷积参数reshape, 框架没有聪明到知道这两个conv之间能做数学合并, 这时候还是依赖导出onnx时写代码手动合并。
 
 目前, 一些AI编译器能对计算图做扫描, 通过图论分析技术对element-wise的算子做合并。
 
