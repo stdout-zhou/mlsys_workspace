@@ -14,8 +14,8 @@ onnx是把torch模型用protobuf序列化后的产物，通过跨平台和语言
 
 ---
 
-TensorRT用的时候会有一个compile过程，这里其实是根据模型参数和具体硬件类型来生成量化的参数，以及优化计算图等等，结果称为`enginee`。
+TensorRT用的时候会有一个compile过程，这里其实是根据模型参数和具体硬件类型来生成量化的参数，以及优化计算图等等，称为`build enginee`。
 所以部署的时候可以做一次warmup，把enginee缓存起来。
 
-TensorRT有很多不支持的cuda算子，所以工程上一般会选择ORT + TensorRT的方式部署模型，推理前框架会对计算图做划分，看哪些算子让TensorRT计算，
+TensorRT有很多不支持的cuda算子，工程上一般会选择ORT + TensorRT的方式部署模型，推理前框架会对计算图做划分，看哪些算子让TensorRT计算，
 哪些给ORT计算。
