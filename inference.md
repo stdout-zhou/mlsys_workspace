@@ -30,3 +30,21 @@ TensorRT有很多不支持的cuda算子，工程上一般会选择ORT + TensorRT
 目前, 一些AI编译器能对计算图做扫描, 通过图论分析技术对element-wise的算子做合并。
 
 更为复杂的fusion, 比如任意算子合并, 这部分我暂时还没从网上找到有什么解决办法。
+
+# CUDA kernel
+1. spconv
+refer from:
+* https://zhuanlan.zhihu.com/p/698314399
+* https://www.mdpi.com/1424-8220/18/10/3337
+
+输入大部分是zero value, 导致在输入上运行卷积核时有大量无效运算。
+
+假设输入shape是(h, w, 1), 代表高, 宽, 通道。卷积核是3 * 3, 输出shape是(h-2, w-2, 1)。
+
+它的做法是构建一个叫rulebook的东西，他会从输入里拿所有的非0值, 然后构建输入idx到输出idx的映射，再到卷积核offset的映射。
+
+前一个映射比较好懂，就是看输入的激活值被映射到输出的哪个位置。后一个映射是说卷积时，卷积核的哪个位置起作用。那么3 * 3的kernel最是9种offset.
+
+实际计算的时候每个offset读出来，然后gather激活点，gemm做矩乘，最后scatter到output上。
+
+
